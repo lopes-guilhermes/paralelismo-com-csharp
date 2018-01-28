@@ -1,6 +1,7 @@
 ﻿using ByteBank.Core.Model;
 using ByteBank.Core.Repository;
 using ByteBank.Core.Service;
+using ByteBank.View.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -38,25 +39,44 @@ namespace ByteBank.View
 
             var contas = r_Repositorio.GetContaClientes();
 
-            AtualizarView(new List<string>(), TimeSpan.Zero);
+            PgsProgresso.Maximum = contas.Count();
+
+            LimparView();
 
             var inicio = DateTime.Now;
 
-            var resultado = await ConsolidarContas(contas);
+            var byteBankProgress = new ByteBankProgress<String>(str =>
+            PgsProgresso.Value++);
+
+            var resultado = await ConsolidarContas(contas, byteBankProgress);
 
             var fim = DateTime.Now;
             AtualizarView(resultado, fim - inicio);
             BtnProcessar.IsEnabled = true;
-                        
+
         }
 
-        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas)
+        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas, IProgress<string> reportadorDeProgresso)
         {
             var task = contas.Select(conta =>
-                Task.Factory.StartNew(() => r_Servico.ConsolidarMovimentacao(conta))
+                Task.Factory.StartNew(() =>
+                {
+                    var resultadoConsolidacao = r_Servico.ConsolidarMovimentacao(conta);
+
+                    reportadorDeProgresso.Report(resultadoConsolidacao);
+
+                    return resultadoConsolidacao;
+                })
             );
 
             return await Task.WhenAll(task);
+        }
+
+        private void LimparView()
+        {
+            LstResultados.ItemsSource = null;
+            TxtTempo.Text = null;
+            PgsProgresso.Value = 0;
         }
 
         private void AtualizarView(IEnumerable<String> result, TimeSpan elapsedTime)
